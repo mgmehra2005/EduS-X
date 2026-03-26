@@ -1,0 +1,19 @@
+# Python/Flask
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# React/Node
+node_modules/
+build/
+.eslintcache
+
+# System/IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Project Specific
+uploads/*
+!uploads/.gitkeep
