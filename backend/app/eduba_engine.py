@@ -5,9 +5,39 @@ import requests
 
 conn = DBConnection(app.config)
 
+# TODO: Recheck Veolcity Response Calculation
+def calculate_response_velocity(user_id):
+    # We only care about CORRECT answers. Speed on a wrong answer isn't 'velocity', it's rushing.
+    query = f"""
+        SELECT e.difficulty_level, a.time_taken_seconds 
+        FROM attempts a
+        JOIN exercise e ON a.exercise_id = e.exercise_id
+        WHERE a.user_id = {user_id} AND a.is_correct = 1
+    """
+    
+    results = conn.get_db_cursor(query)
 
-def update_mastery(user_id, concept_id):
-    query = f"SELECT a.is_correct, a.hints_used FROM attempts a JOIN exercise e ON a.exercise_id = e.exercise_id WHERE a.user_id = {user_id} AND e.concept_id = {concept_id}"
+    if not results:
+        return 0.0
+
+    total_difficulty = 0
+    total_time = 0
+
+    print(results)
+    for row in results:
+        # We cap the minimum time at 1 second to avoid math errors
+        duration = max(row.get("time_taken_seconds", 1), 1)
+        total_difficulty += int(row.get("difficulty_level", 0))
+        total_time += duration
+
+    # Velocity = Difficulty Units per Second
+    velocity = total_difficulty / total_time
+    
+    # We round to 3 decimal places because velocity changes are often small
+    return round(velocity, 3)
+
+def update_mastery(user_id, topic_id):
+    query = f"SELECT a.is_correct, a.hints_used FROM attempts a JOIN exercise e ON a.exercise_id = e.exercise_id WHERE a.user_id = {user_id} AND e.topic_id = {topic_id}"
 
     result = conn.get_db_cursor(query)
     if not result :
@@ -44,8 +74,10 @@ def update_mastery(user_id, concept_id):
     else:
         level = "Mastered"
 
-    update_mastery_score_query = f"INSERT INTO mastery (user_id, concept_id, accuracy_rate, hint_efficiency, consistency_score, mastery_score, mastery_level, streak) Values ({user_id}, {concept_id}, {accuracy_rate}, {hint_efficiency}, {consistency_score}, {mastery_score}, '{level}', {streak}) ON DUPLICATE KEY UPDATE accuracy_rate = VALUES(accuracy_rate), hint_efficiency = VALUES(hint_efficiency), consistency_score = VALUES(consistency_score), mastery_score = VALUES(mastery_score), mastery_level = VALUES(mastery_level), streak = VALUES(streak);"
+    response_velocity = calculate_response_velocity(user_id)  
 
+    update_mastery_score_query = f"INSERT INTO mastery (user_id, topic_id, accuracy_rate, hint_efficiency, consistency_score, mastery_score, mastery_level, streak, response_velocity) Values ({user_id}, {topic_id}, {accuracy_rate}, {hint_efficiency}, {consistency_score}, {mastery_score}, '{level}', {streak}, {response_velocity}) ON DUPLICATE KEY UPDATE accuracy_rate = VALUES(accuracy_rate), hint_efficiency = VALUES(hint_efficiency), consistency_score = VALUES(consistency_score), mastery_score = VALUES(mastery_score), mastery_level = VALUES(mastery_level), streak = VALUES(streak);"
+    
     conn.push_db_cursor(update_mastery_score_query)
 
 
@@ -126,7 +158,70 @@ class EdubaAIEngine:
             "final_answer": "Error"
             }
 
-# def calculate_global_iq(user_id):
-#     globa_i1:int = 
+def calculate_user_cognitive_index(user_id):
+    # 1. Fetch all successful attempts and their difficulty
+    # We join 'attempts' with 'exercise' to get the difficulty_level (1, 2, or 3)
+    try:
+        results = conn.get_db_cursor(f"""
+            SELECT a.time_taken_seconds, e.difficulty_level, a.hints_used 
+            FROM attempts a
+            JOIN exercise e ON a.exercise_id = e.exercise_id
+            WHERE a.user_id = {user_id} AND a.is_correct = 1
+        """)
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return 80  # Baseline IQ in case of DB error
 
-#     return global_iq
+    if not results:
+        return 80  # Baseline IQ
+
+    total_weighted_score = 0
+    
+    for row in results:
+        time = max(row.get("time_taken_seconds", 1), 1)  # Prevent division by zero
+        difficulty = row.get("difficulty_level", 1)
+        hints = row.get("hints_used", 0)
+
+        # Formula: (Difficulty / Time) with a penalty for hints
+        # We multiply by 100 to keep the numbers in a readable "IQ" range
+        attempt_score = (int(difficulty) * 100) / (time + (hints * 5))
+        total_weighted_score += attempt_score
+
+    # 2. Average the performance across all correct attempts
+    final_index = total_weighted_score / len(results)
+    
+    # 3. Normalize: Ensure it stays within a realistic range (e.g., 70 to 160)
+    global_iq = round(max(70, min(160, 85 + final_index)), 2)
+
+    def update_cognitive_score(cognitive_score: float) -> None:
+        update_query = f'''
+            UPDATE users set global_iq_score = {cognitive_score} where id = {user_id};
+            '''
+        conn.push_db_cursor(update_query)
+        conn.push_db_cursor(f"UPDATE mastery set cognitive_index = {cognitive_score} where user_id = {user_id};")
+    update_cognitive_score(global_iq)
+
+    return global_iq
+
+    
+    '''
+Dummy data for testing:
+    
+INSERT INTO exercise (topic_id, problem_text, canonical_solution, difficulty_level) VALUES
+(57, 'x + 5 = 12', '7', 1),
+(57, '10 - x = 4', '6', 1),
+(57, '3x = 15', '5', 2),
+(57, 'x / 4 = 3', '12', 2),
+(57, '2x + 3 = 11', '4', 3),
+(57, '5x - 10 = 20', '6', 3);
+
+
+
+INSERT INTO attempts (user_id, exercise_id, student_answer, is_correct, hints_used, time_taken_seconds) VALUES
+(4, 1, '7', 1, 0, 3),   
+(4, 2, '6', 1, 0, 5),   
+(4, 3, '5', 1, 2, 45),  
+(4, 5, '4', 1, 0, 12),  
+(4, 6, '10', 0, 1, 30); 
+
+    '''
