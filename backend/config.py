@@ -1,0 +1,39 @@
+import os
+import dotenv
+
+
+class Config:
+    dotenv.load_dotenv()
+    
+    CORS_HOST_IP = os.environ.get("CORS_HOST_IP")
+    SECRET_KEY = os.environ.get("SECRET_KEY", "MSpH4YN9VC94SGCjiGKKu2nD1TSwKP-aYy0YixJACAkeKfTGbQ_jkg")
+
+    # Database settings (read from environment if present)
+    DB_HOST = os.environ.get("DB_HOST", "localhost")
+    DB_USER = os.environ.get("DB_USER", "root")
+    DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+    DB_NAME = os.environ.get("DB_NAME", "eduba")
+    DEBUG = False
+
+    # Hugging Face API Key
+    HF_API_KEY = os.environ.get("HF_API_KEY", "")
+
+
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+
+
+class ProductionConfig(Config):
+    DEBUG = False
+
+    def __init__(self):
+        if not os.environ.get("SECRET_KEY"):
+            raise ValueError("SECRET_KEY environment variable must be set in production")
+
+
+config = {
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "default": DevelopmentConfig,
+}

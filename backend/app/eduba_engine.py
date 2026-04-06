@@ -125,3 +125,8 @@ class EdubaAIEngine:
             ],
             "final_answer": "Error"
             }
+
+# def calculate_global_iq(user_id):
+#     globa_i1:int = 
+
+#     return global_iq

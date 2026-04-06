@@ -1,0 +1,64 @@
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+textarea {
+    font-family: inherit;
+}
+
+button {
+    margin-top: 8px;
+    padding: 8px 12px;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.logo img {
+    height: 40px;
+}
+
+main {
+    padding-top: 2rem;
+    text-align: center;
+}
+
+footer {
+    padding: 12px;
+    text-align: center;
+    color: #666;
+    border-top: 1px solid #eee;
+    margin-top: 24px
+}
+
+/* Solution page layout */
+.panes {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.pane {
+    width: 30%;
+    min-height: 200px;
+}
+
+.center-pane {
+    width: 40%;
+}
+
+.solution {
+    padding: 1rem;
+    background: #fafafa;
+    border-radius: 8px;
+    text-align: left
+}
+
+.description {
+    padding: 1rem
+}
