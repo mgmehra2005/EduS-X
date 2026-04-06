@@ -62,12 +62,12 @@ def register():
     try:
         password_hash = generate_password_hash(password)
     except Exception as e:
-        return jsonify({'error': 'password hashing failed'}), 500
+        return jsonify({'error': 'password hashing failed', "data":{"error": e}}), 500
 
     try:
         conn.push_db_cursor('INSERT INTO users (email, password_hash, name) VALUES (%s, %s, %s)', (email, password_hash, name))
     except Exception as e:
-        return jsonify({'DB error': str(e)}), 500
+        return jsonify({'DB error': str(e), "data":{"error": e}}), 500
 
     return jsonify({'status': 'ok'}), 201
 

@@ -15,10 +15,10 @@ export default function Register() {
     try {
       const res = await axios.post('/api/auth/register', { email, password, name }, { headers: { 'Content-Type': 'application/json' } })
       if (res.status === 201) {
-        alert('Registered successfully — please log in')
+        console.log('Registered successfully — please log in')
         navigate('/login')
       } else {
-        alert(res.data.error )
+        console.error('Registration error:', res.data.error)
       }
     } catch (err) {
       alert('Register error: ' + (err.response?.data?.error || err.message || err))
