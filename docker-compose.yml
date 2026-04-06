@@ -2,6 +2,7 @@ version: '3.8'
 services:
   db:
     image: mysql:8.0
+    container_name: edusx_db
     environment:
       MYSQL_DATABASE: eduba
       MYSQL_ROOT_PASSWORD: rootpassword
@@ -9,28 +10,52 @@ services:
       - db_data:/var/lib/mysql
     ports:
       - '3306:3306'
+    networks:
+      - edusx_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
 
   backend:
     build:
       context: ./backend
+    container_name: edusx_backend
     environment:
       DB_HOST: db
       DB_USER: root
       DB_PASSWORD: rootpassword
       DB_NAME: eduba
       SECRET_KEY: changeme
+      FLASK_ENV: production
     ports:
       - '5000:5000'
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    networks:
+      - edusx_network
+    expose:
+      - "5000"
 
   frontend:
     build:
       context: ./frontend
+      args:
+        VITE_BACKEND_URL: http://backend:5000
+    container_name: edusx_frontend
     ports:
       - '3000:3000'
     depends_on:
       - backend
+    networks:
+      - edusx_network
+    environment:
+      VITE_BACKEND_URL: http://backend:5000
+
+networks:
+  edusx_network:
+    driver: bridge
 
 volumes:
   db_data:
