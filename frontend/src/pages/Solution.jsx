@@ -1,11 +1,14 @@
-import React from 'react'
-import { Link } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
 export default function Solution() {
   const raw = sessionStorage.getItem('resolved_solution')
   const payload = raw ? JSON.parse(raw) : null
   const resolved = payload ? (payload.resolved_solution || payload) : null
   const aiData = resolved ? (typeof resolved.data === 'string' ? JSON.parse(resolved.data) : resolved.data) : null
+
+  const navigate = useNavigate()
+  const [sendDisabled, setSendDisabled] = useState(false)
 
   if (!aiData) {
     return (
@@ -47,6 +50,11 @@ export default function Solution() {
           <aside className="lg:col-span-3 bg-white/5 border border-white/6 rounded p-4">
             <h3 className="text-lg font-semibold mb-2">Problem Statement</h3>
             <p className="text-white/80 whitespace-pre-wrap">{aiData.user_query || '—'}</p>
+
+            <div className="mt-4 flex flex-col gap-3">
+              <Link to="/" className="text-center bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded">Solve more questions</Link>
+              <Link to="/live-doubt" className="text-center bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded">live doubt solving</Link>
+            </div>
           </aside>
 
           {/* Center column - Solution & Explanation */}
@@ -88,6 +96,37 @@ export default function Solution() {
                 </ul>
               </div>
             )}
+          </aside>
+
+          {/* Right-pane action button */}
+          <aside className="lg:col-span-3 hidden lg:block">
+            <div className="bg-white/5 border border-white/6 rounded p-4">
+              <h3 className="text-lg font-semibold mb-2">Special Actions</h3>
+              <p className="text-white/80 mb-4 text-sm"> </p>
+              <button
+                onClick={async () => {
+                  if (sendDisabled) return
+                  setSendDisabled(true)
+                  try {
+                    await fetch('http://192.168.1.33:8000/api/v1/process', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ explanation: aiData, concept_difficulty_level: `${aiData.concept || 'unknown'}_${aiData.difficulty || 'unknown'}`, final_answer: aiData.final_answer || 'N/A' })
+                    })
+                  } catch (err) {
+                    console.error('Error sending data', err)
+                  }
+                  setTimeout(() => {
+                    setSendDisabled(false)
+                    navigate('/home')
+                  }, 5000)
+                }}
+                disabled={sendDisabled}
+                className={`w-full text-center py-2 px-3 rounded ${sendDisabled ? 'bg-gray-500 text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+              >
+                {sendDisabled ? 'Sending...' : 'Visualize Solution'}
+              </button>
+            </div>
           </aside>
         </div>
       </main>

@@ -1,9 +1,16 @@
-from flask import jsonify, json
+from flask import jsonify, json, request, current_app
+import jwt
 from app import app
 from app.db_connect import DBConnection
 import requests
 
 conn = DBConnection(app.config)
+import json
+import jwt
+import requests
+from flask import request
+
+
 
 # TODO: Recheck Veolcity Response Calculation
 def calculate_response_velocity(user_id):
@@ -107,6 +114,135 @@ class EdubaAIEngine:
     "final_answer": "short final answer"
     }
     """
+
+    @staticmethod
+    def gen_ai_question_builder(user_query):
+        # --- 1. Identify Topic ID ---
+        # Fetch all topics to match against the query
+        topics = conn.get_db_cursor(f"SELECT topic_id, topic_name FROM topic")
+        topic_id = None
+        for t_id, t_name in topics:
+            if t_name.lower() in user_query.lower():
+                topic_id = t_id
+                break
+        
+        if not topic_id:
+            topic_id = 1 # Fallback to a General topic if no match
+
+        # --- 2. Get User Context ---
+        auth_header = request.headers.get('Authorization')
+        token = auth_header.split(" ")[1]
+        user_id = jwt.decode(token, current_app.config.get('SECRET_KEY', 'MSpH4YN9VC94SGCjiGKKu2nD1TSwKP-aYy0YixJACAkeKfTGbQ_jkg'), algorithms=["HS256"])['sub']
+        
+        user_stats = conn.get_db_cursor(f"SELECT global_iq_score FROM users WHERE id = {user_id}")
+        iq = user_stats[0] if user_stats else 100
+
+        # --- 3. Structured AI Prompt ---
+        prompt = f"""
+        Generate 10 questions for Topic ID {topic_id} based on: '{user_query}'.
+        User IQ: {iq}. 
+        Return EXACTLY a JSON list of objects. Each object MUST have:
+        "q": "The question text",
+        "h": ["hint 1", "hint 2", "hint 3", "hint 4", "hint 5"],
+        "a": "The correct answer",
+        "d": "easy", "medium", or "hard"
+        """
+
+        payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "model": "meta-llama/Llama-3.2-1B-Instruct:novita",
+            "response_format": { "type": "json_object" } # Force JSON if supported
+        }
+
+        try:
+            response = requests.post(EdubaAIEngine.API_URL, headers=EdubaAIEngine.headers, json=payload)
+            ai_raw = response.json()["choices"][0]["message"]["content"]
+            
+            # Clean the string to ensure it's pure JSON
+            questions_data = json.loads(ai_raw[ai_raw.find("["):ai_raw.rfind("]")+1])
+
+            # --- 4. Store and Format Output ---
+            final_output_list = []
+            
+            for item in questions_data:
+                # Save to Database
+                db_session.execute(text("""
+                    INSERT INTO exercise (concept_id, problem_text, canonical_solution, difficulty_level, hints)
+                    VALUES (:tid, :q, :a, :d, :h)
+                """), {
+                    'tid': topic_id, 'q': item['q'], 'a': item['a'], 
+                    'd': item['d'], 'h': json.dumps(item['h'])
+                })
+                
+                # Add to the list we return to the frontend
+                final_output_list.append([item['q'], item['h'], item['a']])
+            
+            db_session.commit()
+            return final_output_list
+
+        except Exception as e:
+            db_session.rollback()
+            return [["Error generating questions", [str(e)], "N/A"]]
+
+
+    @staticmethod
+    def gen_ai_response_TTS(user_query):
+        prompt = """ You are Eduba, an explainable academic AI assistant.
+
+    Respond strictly in JSON format:
+
+    {
+    "concept": "topic name",
+    "final_answer": "short final answer"
+    }
+    give answers in a way that is easy to understand for a student who is new to the topic. Avoid jargon and complex language. Use simple explanations and analogies where possible. Your answer should be descriptive and educational, not just a direct answer. and sholud be designed to in a way that it can be easily converted to speech for a student to listen and understand.
+    """ + "\nUser Question: " + user_query
+
+        payload = {
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "model": "meta-llama/Llama-3.2-1B-Instruct:novita"
+        }
+        try:
+            response = requests.post(EdubaAIEngine.API_URL, headers=EdubaAIEngine.headers, json=payload)
+
+            if response.status_code != 200:
+                return {
+                    "concept": "System Error",
+                    "difficulty": "Beginner",
+                    "stepwise_explanation": [
+                        f"HF API returned status {response.status_code}"
+                    ],
+                    "final_answer": "Error"
+                }
+
+            result = response.json()
+            text_output = result["choices"][0]["message"]["content"]
+
+            # Extract JSON safely
+            json_start = text_output.find("{")
+            json_end = text_output.rfind("}") + 1
+
+            if json_start == -1 or json_end == -1:
+                raise ValueError("JSON not found in response")
+
+            json_string = text_output[json_start:json_end]
+
+            return json.loads(json_string)
+        except Exception as e:
+            return {
+            "concept": "AI Error",
+            "difficulty": "Beginner",
+            "stepwise_explanation": [
+                "AI response parsing failed.",
+                str(e)
+            ],
+            "final_answer": "Error"
+            }
 
     @staticmethod
     def gen_ai_response(user_query):

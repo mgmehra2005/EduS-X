@@ -36,8 +36,6 @@ def health():
 
 # -----------------------API Routes-----------------------
 
-# -----------------------API Routes-----------------------
-
 @main.route("/api/exercises", methods=["GET"])
 @token_required
 def get_exercises():
@@ -148,3 +146,61 @@ def query_endpoint():
 @token_required
 def query_router():
     return query_endpoint()
+
+# Speech to text api endpoint 
+@main.route("/query-responder", methods=["POST"])
+def query_responder():
+    data = request.json
+    user_query = data.get("query", "")
+    print("Received query:", user_query)  # Debug log
+    if not user_query:
+        return jsonify({"error": "Query is required"}), 400
+    
+    try:
+        # Check cache first
+        # cache_response = conn.get_db_cursor("SELECT ai_response from ai_cache where user_query = %s;", (user_query,))
+        # if cache_response:
+        #     print("Cache hit for query:", cache_response[0]["ai_response"])  # Debug log
+        #     return jsonify({
+        #         "source": "cache",
+        #         "data": cache_response[0]["ai_response"]
+        #     }), 200
+        
+        # Generate AI response
+        ai_json = aiEngine.gen_ai_response_TTS(user_query)
+        
+        # Try to cache it
+        # try:
+        #     safe_json = json.dumps(ai_json, ensure_ascii=False)
+        #     conn.push_db_cursor("""
+        #     INSERT INTO ai_cache (user_query, ai_response)
+        #     VALUES (%s, %s)
+        #     ON DUPLICATE KEY UPDATE ai_response = VALUES(ai_response)
+        #     """, (user_query, safe_json))
+        # except Exception as e:
+        #     print("Error caching AI response:", str(e))
+        
+        print("Generated AI response:", ai_json)  # Debug log
+        return jsonify({
+            "source": "ai",
+            "data": ai_json
+        }), 200
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@main.route("/questions", methods=["POST"])
+@token_required
+def get_questions():
+    data = request.json or {}
+    query = data.get("query", "")
+    if not query:   
+        return jsonify({"error": "Query parameter is required"}), 400
+    
+    try:
+        result = conn.get_db_cursor("SELECT exercise_id, problem_text FROM exercise WHERE problem_text LIKE %s LIMIT 10;", (f"%{query}%",))
+        return jsonify({"questions": result}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
